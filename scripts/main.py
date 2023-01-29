@@ -1,18 +1,21 @@
 import jax
 import jax.numpy as jnp
 import random
+import tqdm
+from typing import Iterable
+from copy import copy
 
-from jaxtorch import Module, PRNG, Context, ParamState
-from jaxtorch import init
+from jaxtorch import Module, PRNG, Context, Param
 from jaxtorch import nn
 
 class SGD(object):
-    def __init__(self, parameters):
+
+    def __init__(self, parameters: Iterable[Param]):
         self.parameters = list(parameters)
 
     def step(self, px, grad, lr):
-        new_values = px.clone()
-        for p in self.parameters:
+        new_values = copy(px)
+        for p in [param.name for param in self.parameters]:
             new_values[p] = px[p] - grad[p] * lr
         return new_values
 
@@ -47,8 +50,7 @@ opt = SGD(model.parameters())
 
 rng = PRNG(jax.random.PRNGKey(0))
 
-px = ParamState(model.parameters())
-px.initialize(rng.split())
+px = model.init_weights(rng.split())
 print(model.state_dict(px))
 
 def loss(px, x, y, key):
@@ -56,8 +58,14 @@ def loss(px, x, y, key):
     return square(model(cx, x) - y).mean()
 loss_grad = jax.jit(jax.value_and_grad(loss))
 
-counter = 1
-while True:
+@jax.jit
+def train_step(px, x, y, key, lr):
+    v_loss, v_grad = loss_grad(px, x, y, key=key)
+    return v_loss, opt.step(px, v_grad, lr=lr)
+
+steps = 1_000_000
+pbar = tqdm.trange(1, steps)
+for step in pbar:
     xs = []
     ys = []
     for _ in range(1):
@@ -66,8 +74,6 @@ while True:
         ys.append(jnp.array(y, dtype=jnp.float32))
     x = jnp.stack(xs)
     y = jnp.stack(ys)
-    v_loss, v_grad = loss_grad(px, x, y, key=rng.split())
-    px = opt.step(px, v_grad, lr=0.01)
-    if counter % 10 == 0:
-        print(counter, v_loss)
-    counter += 1
+    v_loss, px = train_step(px, x, y, key=rng.split(), lr=0.01)
+    if step % 10_000 == 0:
+        pbar.write(f'{step:,}: {v_loss:.6e}')
