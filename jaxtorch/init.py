@@ -1,5 +1,6 @@
 import math
 import jax
+import jax.core
 import jax.numpy as jnp
 import numpy as np
 from jaxtorch import core

@@ -1,6 +1,5 @@
 import jax
 import jax.numpy as jnp
-import jaxlib
 import jaxtorch
 
 # Modules are just classes that inherit jaxtorch.Module
